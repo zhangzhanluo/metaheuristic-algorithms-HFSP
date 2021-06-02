@@ -1,4 +1,12 @@
-from code_00_generate_processing_time import generate_processing_time
+"""
+    Author: Zhanluo Zhang
+    Author E-mail: zhangzhanluo@outlook.com
+    Version: v1.0
+    Created Date: 20210602
+    Description: Forward scheduling approach and calculate C_max and C_j
+"""
+
+from part_00_generate_processing_time import generate_processing_time
 
 
 def forward_scheduling_approach(pi, p_kj, I_k):
@@ -9,8 +17,8 @@ def forward_scheduling_approach(pi, p_kj, I_k):
     be different in each stage. In this manner, a complete schedule can be found by using only an initial solution π.
 
     :param pi: solution
-    :param p_kj: Processing time of job j  ∈ J at stage k ∈ M
-    :param I_k: Set of machines at stage k  ∈ M
+    :param p_kj: Processing time of job j ∈ J at stage k ∈ M
+    :param I_k: Set of machines at stage k ∈ M
     :return: x_jki and s_kj. x_jki -> 1 if job j is processed at machine i at stage k, 0 otherwise;
     s_kj -> Starting time of job j at stage k. Note that in the article it is x_jik instead of x_jki.
     x_jki is better when coding it.
@@ -60,7 +68,7 @@ def calculate_cmax_cj(s_kj, p_kj):
     """
     Calculate C_max (Maximum completion time (makespan)) and C_j (Completion time of job j)
     :param s_kj: Starting time of job j at stage k
-    :param p_kj: Processing time of job j  ∈ J at stage k ∈ M
+    :param p_kj: Processing time of job j ∈ J at stage k ∈ M
     :return: C_max and C_j
     """
     all_c_j = [s_kj[-1][j] + p_kj[-1][j] for j in range(len(s_kj[0]))]
