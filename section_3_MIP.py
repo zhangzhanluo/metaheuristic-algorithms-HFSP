@@ -10,21 +10,21 @@ import gurobipy as grb
 from section_0_preparing import HFSPInstance, draw_gant_chart
 
 
-def mip(instance, goal, time_limit=600, gant_path=None):
+def mip(instance, goal, time_limit=600, save_pic=True):
     """
     solve the instance using mixed integer programming model
     :param instance: case, (processing time, number of machines for each stage). processing_time: stage, job
-    :param goal: c_j or c_max
+    :param goal: TFT (total flow time) or C_max (makespan)
     :param time_limit: time limit for solving the mip model
-    :param gant_path: path to save the gant chart of the result
+    :param save_pic: save result or not
     :return: objective value, model building time, model solving time
     """
-    assert goal in ['c_j', 'c_max']
+    assert goal in ['TFT', 'C_max']
     n_stages = instance.n_stages
     n_jobs = instance.n_jobs
     p = instance.processing_time
     I = instance.stages_machine
-    Q = 100000.0  # a very large number
+    Q = 10000.0  # a very large number
     try:
         start_time = time.time()
         # Create a new model
@@ -41,7 +41,7 @@ def mip(instance, goal, time_limit=600, gant_path=None):
         y = m.addVars(n_stages, n_jobs, n_jobs, vtype=grb.GRB.BINARY, name='y')
 
         # Add variables and constraints according to the goal
-        if goal == 'c_j':
+        if goal == 'TFT':
             c = m.addVars(n_jobs, vtype=grb.GRB.CONTINUOUS, name='c', obj=1)
             m.addConstrs((s[n_stages - 1, j] + p[n_stages - 1][j] == c[j] for j in range(n_jobs)),
                          name='(2)')
@@ -105,15 +105,18 @@ def mip(instance, goal, time_limit=600, gant_path=None):
             print(v.varName, v.x)
         print('Obj:', m.objVal)
 
+        all_c_j = [s[n_stages - 1, j].x + p[n_stages - 1][j] for j in range(n_jobs)]
+        TFT = round(sum(all_c_j), 2)
+        C_max = round(max(all_c_j), 2)
+
         # draw gant chart
-        if gant_path is not None:
-            job_machine_info = []
-            for j in range(n_jobs):
-                for k in range(n_stages):
-                    machine_id = [m.x for m in x.select(j, '*', k)].index(1.0)
-                    job_machine_info.append((j + 1, '{}-{}'.format(k+1, machine_id+1), s[k, j].x, p[k][j]))
-            draw_gant_chart(job_machine_info, title='Gant Chart for {} Instance (MIP)'.format(instance.name),
-                            save_path=gant_path)
+        job_machine_info = []
+        for j in range(n_jobs):
+            for k in range(n_stages):
+                machine_id = [m.x for m in x.select(j, '*', k)].index(1.0)
+                job_machine_info.append((j + 1, '{}-{}'.format(k + 1, machine_id + 1), s[k, j].x, p[k][j]))
+        draw_gant_chart(job_machine_info, instance_name=instance.name, method='MIP', goal=goal, TFT=TFT,
+                        C_max=C_max, save_chart=save_pic)
 
         return m.objVal, model_building_time, model_solving_time
 
@@ -123,7 +126,8 @@ def mip(instance, goal, time_limit=600, gant_path=None):
 
 
 if __name__ == '__main__':
-    case = HFSPInstance(default=True)
-    optimal_solution = mip(case, goal='c_j', gant_path='02_Results/30_MIP/Pics/')
-    case_1 = HFSPInstance(n_jobs=6, n_stages=10, machine_layout='e')
-    optimal_solution_1 = mip(case_1, goal='c_j', gant_path='02_Results/30_MIP/Pics/')
+    for g in ['TFT', 'C_max']:
+        case = HFSPInstance(default=True, random_instance=False)
+        optimal_solution = mip(case, goal=g, save_pic=True)
+        case_1 = HFSPInstance(n_jobs=6, n_stages=3, machine_layout='e', random_instance=False)
+        optimal_solution_1 = mip(case_1, goal=g, save_pic=True)

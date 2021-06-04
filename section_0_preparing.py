@@ -53,15 +53,20 @@ class HFSPInstance:
         return stages_machine
 
 
-def draw_gant_chart(job_machine_infos, ax=None, title=None, show_chart=True, save_path=None, dpi=300):
+def draw_gant_chart(job_machine_infos, ax=None, instance_name=None, method=None, goal=None, TFT=None, C_max=None,
+                    show_chart=True, save_chart=True, dpi=300):
     """
     Draw gant chart.
 
     :param job_machine_infos: list of (job_name, machine_name, start_time, duration)
     :param ax: optional.
-    :param title: optional, title for the pic.
-    :param show_chart: optional, default true.
-    :param save_path: optional, the folder and name for the pic to be saved.
+    :param instance_name: optional, instance name.
+    :param method: algorithm
+    :param goal: TFT or C_max
+    :param TFT: total flow time
+    :param C_max: makespan
+    :param show_chart: optional, default true
+    :param save_chart: optional, default true
     :param dpi: optional, parameter for saving the pic
     :return: Nothing
     """
@@ -80,11 +85,16 @@ def draw_gant_chart(job_machine_infos, ax=None, title=None, show_chart=True, sav
             fontsize=5, transform=ax.transAxes)
     ax.set_xlabel('Time')
     ax.set_ylabel('Stage-Machine')
-    if title is not None:
+
+    if instance_name is not None:
+        title = 'Gant Chart for {} Instance \n Goal {}, Method {}, TFT {}, C_max {}'.format(instance_name, goal, method,
+                                                                                            TFT, C_max)
         ax.set_title(title)
-    plt.tight_layout()
-    if save_path is not None:
-        plt.savefig(save_path+title+'.png', dpi=dpi)
+        plt.tight_layout()
+        if save_chart:
+            save_path = '02_Results/Pics/'
+            name = title.replace('\n', ',')
+            plt.savefig(save_path + name + '.png', dpi=dpi)
     if show_chart:
         plt.show()
 
