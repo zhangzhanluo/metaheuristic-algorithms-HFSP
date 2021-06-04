@@ -5,7 +5,6 @@
     Created Date: 20210602
     Description: Forward scheduling approach and calculate C_max and C_j
 """
-
 from section_0_preparing import HFSPInstance, draw_gant_chart
 
 
@@ -22,15 +21,14 @@ def forward_scheduling_approach(instance, pi):
     s_kj -> Starting time of job j at stage k. Note that in the article it is x_jik instead of x_jki.
     x_jki is better when coding it.
     """
-    n_jobs = instance.n_jobs
+    n_jobs = len(pi)
     n_stages = instance.n_stages
-    assert len(pi) == n_jobs
     p_kj = instance.processing_time
     I_k = instance.stages_machine
     system_clock = 0
-    jobs_finishing_time = [0.0 for _ in pi]
-    jobs_stage = [-1 for _ in pi]
-    machines_status = [[0.0 for _ in range(I_k[i])] for i in range(n_stages)]
+    jobs_finishing_time = [0.0 for _ in pi]  # 记录任务完成时间
+    jobs_stage = [-1 for _ in pi]  # 记录任务阶段
+    machines_status = [[0.0 for _ in range(I_k[i])] for i in range(n_stages)]  # 记录机器正在处理的任务完成时间或者空闲
     x_jki = [[[0 for _ in range(I_k[k])] for k in range(n_stages)] for _ in range(n_jobs)]
     s_kj = [[-1 for _ in range(n_jobs)] for _ in range(n_stages)]
     while True:
@@ -42,7 +40,7 @@ def forward_scheduling_approach(instance, pi):
                     current_machine = x_jki[j][k].index(1)
                     machines_status[k][current_machine] = 0.0  # 任务时间到了，就可以结束了，当前机器占用状态重置，这对应于无限buffer的情况
                 if k == n_stages - 1:  # 是倒数第一阶段，则直接标记任务离开系统
-                    jobs_finishing_time[j] = 1e10  # 用一个无穷大的数字表示任务已经永远结束
+                    jobs_finishing_time[j] = 1e6  # 用一个无穷大的数字表示任务已经永远结束
                 else:  # 不是最后一个阶段，需要进行下一步开始判断
                     if min(machines_status[k + 1]) == 0.0:  # 下一个阶段有可用机器
                         # 任务转移至下一个阶段，任务的结束时间进行更新
@@ -69,14 +67,15 @@ def forward_scheduling_approach(instance, pi):
 if __name__ == '__main__':
     hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_instance=False)]
     for hfsp_instance in hfsp_instances:
-        solution = [1, 2, 3, 4, 5, 6]
+        solution = [4, 2, 3, 6]
         xjki, skj, _, _ = forward_scheduling_approach(hfsp_instance, solution)
         job_machine_info = []
-        for j in range(hfsp_instance.n_jobs):
+        for j in range(len(solution)):
             for k in range(hfsp_instance.n_stages):
                 machine_id = xjki[j][k].index(1)
                 job_machine_info.append(
-                    (j + 1, '{}-{}'.format(k + 1, machine_id + 1), skj[k][j], hfsp_instance.processing_time[k][j]))
+                    (solution[j], '{}-{}'.format(k + 1, machine_id + 1), skj[k][j],
+                     hfsp_instance.processing_time[k][solution[j] - 1]))
         draw_gant_chart(job_machine_info,
                         title='Gant Chart for {} Instance (forward scheduling approach)'.format(hfsp_instance.name),
                         save_path='02_Results/40_Forward_Scheduling/Pics/')
