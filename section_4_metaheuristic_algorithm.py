@@ -5,17 +5,19 @@
     Created Date: 20210602
     Description: Forward scheduling approach and calculate C_max and C_j
 """
+import random
 from section_0_preparing import HFSPInstance, draw_gant_chart
 
 
 class MetaheuristicAlgorithmSolver:
-    def __init__(self, instance):
+    def __init__(self, instance, goal='TFT'):
         """
         example：
             ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance)
             neh_solution_result = ma_solver.NEH_heuristic(goal='TFT', show_result=True, save_result=True)
 
-        :param instance:
+        :param instance: HFSP instance
+        :param goal: TFT or C_max
         """
         self.instance = instance
         self.n_jobs = instance.n_jobs
@@ -24,6 +26,10 @@ class MetaheuristicAlgorithmSolver:
         self.I_k = instance.stages_machine
         self.TFT = None
         self.c_max = None
+        self.goal = goal
+        # The threshold value α ∈ [0, 1] limits the size of RCL and regulates balance between
+        # greedy and randomized procedures.
+        self.grasp_alpha = 0.1
 
     def forward_scheduling_approach(self, pi):
         """
@@ -79,43 +85,15 @@ class MetaheuristicAlgorithmSolver:
             if len(all_working_machine_status) == 0:  # 当所有的机器都空闲后，系统所有的任务都完成，结束
                 break
             system_clock = min(all_working_machine_status)  # 将系统时钟调整到下一个任务结束的时刻
-            print(system_clock)
         all_c_j = [s_kj[-1][j] + self.p_kj[-1][j] for j in range(len(s_kj[0]))]
-        return {'x_jki': x_jki, 's_kj': s_kj, 'TFT': sum(all_c_j), 'C_max': max(all_c_j)}
+        return {'x_jki': x_jki, 's_kj': s_kj, 'TFT': round(sum(all_c_j), 1), 'C_max': round(max(all_c_j), 1)}
 
-    def NEH_heuristic(self, goal='TFT', show_result=True, save_result=False):
-        """
-        give a solution, and show it if ordered.
-
-        :param goal: TFT or C_max
-        :param show_result: show result
-        :param save_result: save result to 02_Results/Pics/
-        :return:
-        """
-        TP = [sum([self.p_kj[k][j] for k in range(self.instance.n_stages)]) for j in range(self.n_jobs)]
-        tp_jobs = [(TP[i], i + 1) for i in range(self.n_jobs)]  # 这里给出了每个任务的名字，就是他们对应的顺序
-        tp_jobs.sort(key=lambda x: x[0], reverse=True)
-        sorted_jobs = [tp_job[1] for tp_job in tp_jobs]
-        pi = [sorted_jobs[0]]
-        for i in range(1, self.n_jobs):
-            fitness_ls = []
-            for j in range(len(pi) + 1):
-                current_pi = pi.copy()
-                current_pi.insert(j, sorted_jobs[i])
-                forward_scheduling_result = self.forward_scheduling_approach(current_pi)
-                fitness_ls.append(forward_scheduling_result[goal])
-            pi.insert(fitness_ls.index(min(fitness_ls)), sorted_jobs[i])
-        solution_result = self.forward_scheduling_approach(pi)
-        self.draw_fs_result_gant_chart(pi, method='NEH', goal=goal, show_chart=show_result, save_result=save_result)
-        return pi, solution_result
-
-    def draw_fs_result_gant_chart(self, pi, method=None, goal=None, show_chart=True, save_result=None):
+    def draw_fs_result_gant_chart(self, pi, method=None, show_chart=True, save_result=None):
         """
         Draw Gant chart for forward scheduling result.
 
         :param pi: solution
         :param method: how you get pi
-        :param goal: pi for which solution
         :param show_chart: show it
         :param save_result: save or not
         :return: nothing
@@ -133,14 +111,116 @@ class MetaheuristicAlgorithmSolver:
             save_path = '02_Results/40_metaheuristic_algorithm/Pics/'
         else:
             save_path = None
-        draw_gant_chart(job_machine_info, instance_name=self.instance.name, method=method, goal=goal,
+        draw_gant_chart(job_machine_info, instance_name=self.instance.name, method=method, goal=self.goal,
                         TFT=forward_approach_result['TFT'], C_max=forward_approach_result['C_max'],
                         show_chart=show_chart, save_chart=save_path)
 
+    def sort_the_jobs(self):
+        """
+        stage 1 of NEH heuristic.
+        the sum of the processing times on all stages (TPj) is calculated for each job j ∈ J.
+        Then, jobs are sorted in decreasing order of TPj.
+
+        :return: sorted jobs
+        """
+        TP = [sum([self.p_kj[k][j] for k in range(self.instance.n_stages)]) for j in range(self.n_jobs)]
+        tp_jobs = [(TP[i], i + 1) for i in range(self.n_jobs)]  # 这里给出了每个任务的名字，就是他们对应的顺序
+        tp_jobs.sort(key=lambda x: x[0], reverse=True)
+        sorted_jobs = [tp_job[1] for tp_job in tp_jobs]
+        return sorted_jobs
+
+    def NEH_heuristic(self, guiding_solution=None, show_result=True, save_result=False):
+        """
+        give a solution, and show it if ordered.
+
+
+        :param show_result: show result
+        :param guiding_solution: a guiding solution
+        :param save_result: save result to 02_Results/Pics/
+        :return: a neh solution and its forward scheduling result
+        """
+        if guiding_solution is None:
+            guiding_solution = self.sort_the_jobs()
+        pi = [guiding_solution[0]]
+        for i in range(1, self.n_jobs):
+            fitness_ls = []
+            for j in range(len(pi) + 1):
+                current_pi = pi.copy()
+                current_pi.insert(j, guiding_solution[i])
+                forward_scheduling_result = self.forward_scheduling_approach(current_pi)
+                fitness_ls.append(forward_scheduling_result[self.goal])
+            pi.insert(fitness_ls.index(min(fitness_ls)), guiding_solution[i])
+        solution_result = self.forward_scheduling_approach(pi)
+        self.draw_fs_result_gant_chart(pi, method='NEH', show_chart=show_result, save_result=save_result)
+        return pi, solution_result
+
+    def GRASP(self, pi_star, h, random_seed=None):
+        """
+        Greedy Randomized Adaptive Search Procedure。
+
+        :param pi_star: initial order of jobs, in this study it is always the result of self.sort_the_jobs()
+        :param h: decide the leading job for GRASP
+        :param random_seed: control random seed for random select
+        :return:
+        """
+        random.seed(random_seed)
+        U = [i + 1 for i in range(self.n_jobs)]
+        pi_1 = pi_star[h]
+        U.remove(pi_1)
+        pi = [pi_1]
+        for _ in range(1, self.n_jobs):
+            CF_list = []
+            for j in U:
+                current_pi = pi.copy()
+                current_pi.append(j)
+                current_pi_result = self.forward_scheduling_approach(current_pi)
+                CF_list.append(current_pi_result[self.goal])
+            CF_min, CF_max = min(CF_list), max(CF_list)
+            RCL = []
+            for i, j in enumerate(U):
+                if CF_list[i] - CF_min <= self.grasp_alpha * (CF_max - CF_min):
+                    RCL.append(j)
+            pi.append(random.choice(RCL))
+            U.remove(pi[-1])
+        random.seed(None)
+        return pi
+
+    def GRASP_NEH_heuristic(self, x=None, show_result=True, save_result=False, random_seed=None):
+        """
+        GRASP_NEH(x) heuristic.
+
+        :param x: We fix the number of solutions x as n in this study.
+        :param show_result: show result
+        :param save_result: save result
+        :param random_seed: random state control for GRASP.
+        :return: best solution and its forward scheduling result
+        """
+        if x is None:
+            x = self.n_jobs
+        pi_star = self.sort_the_jobs()
+        pi_list = []
+        pi_goal_values = []
+        for h in range(0, x):
+            pi_1 = self.GRASP(pi_star, h, random_seed=random_seed)
+            pi_1_result = self.forward_scheduling_approach(pi_1)
+            pi_2, _ = self.NEH_heuristic(guiding_solution=pi_1, show_result=False, save_result=False)
+            pi_2_result = self.forward_scheduling_approach(pi_2)
+            if pi_2_result[self.goal] < pi_1_result[self.goal]:
+                pi_list.append(pi_2)
+                pi_goal_values.append(pi_2_result[self.goal])
+            else:
+                pi_list.append(pi_1)
+                pi_goal_values.append(pi_2_result[self.goal])
+        best_pi = pi_list[pi_goal_values.index(min(pi_goal_values))]
+        best_pi_result = self.forward_scheduling_approach(best_pi)
+        self.draw_fs_result_gant_chart(best_pi, method='GRASP_NEH', show_chart=show_result, save_result=save_result)
+        return best_pi, best_pi_result
+
 
 if __name__ == '__main__':
-    hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_instance=False)]
+    hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_seed=1)]
     for g in ['TFT', 'C_max']:
         for hfsp_instance in hfsp_instances:
-            ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance)
-            neh_solution_result = ma_solver.NEH_heuristic(goal=g, show_result=True, save_result=True)
+            ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance, goal=g)
+            neh_solution_result = ma_solver.NEH_heuristic(show_result=True, save_result=True)
+            grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=True, save_result=True)

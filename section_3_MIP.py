@@ -106,8 +106,8 @@ def mip(instance, goal, time_limit=600, save_pic=True):
         print('Obj:', m.objVal)
 
         all_c_j = [s[n_stages - 1, j].x + p[n_stages - 1][j] for j in range(n_jobs)]
-        TFT = round(sum(all_c_j), 2)
-        C_max = round(max(all_c_j), 2)
+        TFT = round(sum(all_c_j), 1)
+        C_max = round(max(all_c_j), 1)
 
         # draw gant chart
         job_machine_info = []
@@ -127,7 +127,7 @@ def mip(instance, goal, time_limit=600, save_pic=True):
 
 if __name__ == '__main__':
     for g in ['TFT', 'C_max']:
-        case = HFSPInstance(default=True, random_instance=False)
+        case = HFSPInstance(default=True)
         optimal_solution = mip(case, goal=g, save_pic=True)
-        case_1 = HFSPInstance(n_jobs=6, n_stages=3, machine_layout='e', random_instance=False)
+        case_1 = HFSPInstance(n_jobs=6, n_stages=3, machine_layout='e', random_seed=1)
         optimal_solution_1 = mip(case_1, goal=g, save_pic=True)

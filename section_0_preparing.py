@@ -10,21 +10,23 @@ from matplotlib import pyplot as plt
 
 
 class HFSPInstance:
-    def __init__(self, n_jobs=None, n_stages=None, machine_layout='e', default=False, random_instance=True):
+    def __init__(self, n_jobs=None, n_stages=None, machine_layout='e', default=False, random_seed=None):
         """
         Generate instance.
 
         :param n_jobs: number of jobs
         :param n_stages: number of stages
         :param machine_layout: machine layout type: a, b, c, d, e, see Section 6 for more infos
-        :param default: the example given in Section 4.
+        :param default: the example given in Section 4
+        :param random_seed: None means totally random
         :return: Processing time, the number of machines in each stage, instance name
         """
-        if not random_instance:
-            random.seed(2021)
+        random.seed(random_seed)
         self.n_jobs = 6 if default else n_jobs
         self.n_stages = 2 if default else n_stages
         self.name = 'default' if default else 'j{}c{}{}'.format(n_jobs, n_stages, machine_layout)
+        if random_seed is not None:
+            self.name = self.name + str(random_seed)
         self.machine_layout = 'default' if default else machine_layout
         if default:  # a given example at the very beginning
             self.processing_time = [[4, 3, 6, 4, 4, 2],
@@ -33,8 +35,7 @@ class HFSPInstance:
         else:
             self.processing_time = [[round(random.uniform(0, 100), 2) for _ in range(n_jobs)] for _ in range(n_stages)]
             self.stages_machine = self.generate_stages_machine()
-        if not random_instance:
-            random.seed(None)
+        random.seed(None)
 
     def generate_stages_machine(self):
         stages_machine = [3 for _ in range(self.n_stages)]
@@ -97,6 +98,8 @@ def draw_gant_chart(job_machine_infos, ax=None, instance_name=None, method=None,
             plt.savefig(save_path + name + '.png', dpi=dpi)
     if show_chart:
         plt.show()
+    else:
+        plt.close()
 
 
 if __name__ == '__main__':
