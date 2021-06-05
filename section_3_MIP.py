@@ -101,8 +101,6 @@ def mip(instance, goal, time_limit=600, save_pic=True):
         model_solving_time = time.time() - model_building_time
 
         # print results
-        for v in m.getVars():
-            print(v.varName, v.x)
         print('Obj:', m.objVal)
 
         all_c_j = [s[n_stages - 1, j].x + p[n_stages - 1][j] for j in range(n_jobs)]
@@ -126,8 +124,8 @@ def mip(instance, goal, time_limit=600, save_pic=True):
 
 
 if __name__ == '__main__':
+    hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_seed=1), HFSPInstance(
+        n_jobs=10, n_stages=4, random_seed=1)]
     for g in ['TFT', 'C_max']:
-        case = HFSPInstance(default=True)
-        optimal_solution = mip(case, goal=g, save_pic=True)
-        case_1 = HFSPInstance(n_jobs=6, n_stages=3, machine_layout='e', random_seed=1)
-        optimal_solution_1 = mip(case_1, goal=g, save_pic=True)
+        for hfsp_instance in hfsp_instances:
+            optimal_solution = mip(hfsp_instance, goal=g, save_pic=True)

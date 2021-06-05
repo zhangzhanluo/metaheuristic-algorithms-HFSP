@@ -5,6 +5,8 @@
     Created Date: 20210602
     Description: Forward scheduling approach and calculate C_max and C_j
 """
+import time
+import math
 import random
 from section_0_preparing import HFSPInstance, draw_gant_chart
 
@@ -129,34 +131,50 @@ class MetaheuristicAlgorithmSolver:
         sorted_jobs = [tp_job[1] for tp_job in tp_jobs]
         return sorted_jobs
 
+    def NEH_insertion(self, pi, job):
+        """
+        Try all possible position and insert the job into the best position.
+
+        :param pi: a not completed solution
+        :param job: the inserted job
+        :return: pi+job for the best position
+        """
+        assert job not in pi
+        fitness_ls = []
+        for j in range(len(pi) + 1):
+            current_pi = pi.copy()
+            current_pi.insert(j, job)
+            forward_scheduling_result = self.forward_scheduling_approach(current_pi)
+            fitness_ls.append(forward_scheduling_result[self.goal])
+        pi.insert(fitness_ls.index(min(fitness_ls)), job)
+        return pi
+
     def NEH_heuristic(self, guiding_solution=None, show_result=True, save_result=False):
         """
-        give a solution, and show it if ordered.
+        Nawaz, Enscore, Ham (NEH) Algorithm, 1983. Sort first and insert the job one by one.
 
-
-        :param show_result: show result
         :param guiding_solution: a guiding solution
+        :param show_result: show result
         :param save_result: save result to 02_Results/Pics/
-        :return: a neh solution and its forward scheduling result
+        :return: a NEH solution and its forward scheduling result
         """
         if guiding_solution is None:
             guiding_solution = self.sort_the_jobs()
         pi = [guiding_solution[0]]
         for i in range(1, self.n_jobs):
-            fitness_ls = []
-            for j in range(len(pi) + 1):
-                current_pi = pi.copy()
-                current_pi.insert(j, guiding_solution[i])
-                forward_scheduling_result = self.forward_scheduling_approach(current_pi)
-                fitness_ls.append(forward_scheduling_result[self.goal])
-            pi.insert(fitness_ls.index(min(fitness_ls)), guiding_solution[i])
+            pi = self.NEH_insertion(pi, guiding_solution[i])
         solution_result = self.forward_scheduling_approach(pi)
         self.draw_fs_result_gant_chart(pi, method='NEH', show_chart=show_result, save_result=save_result)
         return pi, solution_result
 
     def GRASP(self, pi_star, h, random_seed=None):
         """
-        Greedy Randomized Adaptive Search Procedure。
+        Greedy Randomized Adaptive Search Procedure, Feo and Resende (1995).
+        From a set of candidate jobs to be sequenced, the next job to be appended is selected using a cost function.
+        The cost of each candidate is computed and a restricted candidate list (RCL) is constructed, which holds
+        jobs with a cost no larger than cfmin + α (cfmax−cfmin), where cfmin and cfmax are the minimum and maximum
+        costs. The threshold value α ∈ [0, 1] limits the size of RCL and regulates balance between greedy and
+        randomized procedures.
 
         :param pi_star: initial order of jobs, in this study it is always the result of self.sort_the_jobs()
         :param h: decide the leading job for GRASP
@@ -187,7 +205,8 @@ class MetaheuristicAlgorithmSolver:
 
     def GRASP_NEH_heuristic(self, x=None, show_result=True, save_result=False, random_seed=None):
         """
-        GRASP_NEH(x) heuristic.
+        GRASP_NEH(x) heuristic. Use all the job as leading job, and then get a GRASP solution, and then improve it by
+        NEH algorithm, and finally choose the best solution among all the leading job.
 
         :param x: We fix the number of solutions x as n in this study.
         :param show_result: show result
@@ -216,11 +235,133 @@ class MetaheuristicAlgorithmSolver:
         self.draw_fs_result_gant_chart(best_pi, method='GRASP_NEH', show_chart=show_result, save_result=save_result)
         return best_pi, best_pi_result
 
+    @staticmethod
+    def destruction(pi, dS, random_seed=None):
+        """
+        Chooses randomly, without repetition d jobs. These d jobs are then removed from pi in the order in which they
+        were chosen.The result of this procedure are two subsequences,the first being the partial sequence pi_D with
+        n-d jobs, that is the sequence after the removal of d jobs, and the second being a sequence of d jobs, which
+        we denote as pi_R.
+        :param pi: solution
+        :param dS: number of jobs to be removed from pi
+        :param random_seed:
+        :return: pi_D -> destruction, pi_R -> repair
+        """
+        random.seed(random_seed)
+        pick_flags = [1 for _ in range(dS)] + [0 for _ in range(len(pi) - dS)]
+        random.shuffle(pick_flags)
+        random.seed(None)
+        pi_R, pi_D = [], []
+        for i, pick_flag in enumerate(pick_flags):
+            if pick_flag:
+                pi_R.append(pi[i])
+            else:
+                pi_D.append(pi[i])
+        return pi_D, pi_R
+
+    def construction(self, pi_D, pi_R):
+        """
+        The construction phase consists in the application of step 3 of the NEH heuristic until a complete sequence of
+        all n jobs is obtained. The construction phase starts with subsequence pi_D and performs d steps in which the
+        jobs in pi_R are reinserted into pi_D. Hence, we start with pi_D and insert the first job of pi_R, pi_R(1),
+        into all possible n - d + 1 positions of pi_D. The best position for pi_R(1) in the augmented pi_D sequence is
+        the one that yields the smallest Cmax. This process is iterated until pi_R is empty.
+
+        :param pi_D: destruct set
+        :param pi_R: repair set
+        :return: a complete solution
+        """
+        for j in pi_R:
+            pi_D = self.NEH_insertion(pi_D, j)
+        return pi_D
+
+    def first_improvement_insertion_local_search(self, pi):
+        """
+        Local search aims to further enhance solution quality. For each job πi, the procedure inserts job πi into
+        all possible positions of solution π. When the most improving insertion position is found, job πi is
+        inserted into that position. These steps are repeated for all jobs. If an improvement is found, the local
+        search is re-run until no better solution is obtained.
+
+        :param pi: original solution
+        :return: solution improved by local search
+        """
+        improvement_flag = True
+        pi_goal = self.forward_scheduling_approach(pi)[self.goal]
+        while improvement_flag:
+            improvement_flag = False
+            for i in range(len(pi)):
+                current_pi = pi.copy()
+                current_pi.remove(pi[i])
+                all_new_pi = []
+                all_fitness = []
+                for j in range(len(current_pi) + 1):
+                    new_pi = current_pi.copy()
+                    new_pi.insert(j, pi[i])
+                    all_new_pi.append(new_pi)
+                    all_fitness.append(self.forward_scheduling_approach(new_pi)[self.goal])
+                best_new_pi = all_new_pi[all_fitness.index(min(all_fitness))]
+                if best_new_pi != pi and min(all_fitness) < pi_goal:
+                    pi = best_new_pi
+                    pi_goal = self.forward_scheduling_approach(pi)[self.goal]
+                    improvement_flag = True
+        return pi
+
+    def IG_algorithm(self, variant, d_S=2, tP=0.5, time_limit=10, random_seed=None, show_result=True,
+                     save_result=False):
+        """
+        Iterated greedy algorithm proposed by Ruiz and Stützle (2007)
+
+        :param variant: variant of IG algorithms: IG_RS, IG_GR, IGT, IGT_ALL
+        :param d_S: dS jobs are randomly removed from current solution π and are re-inserted into the partial solution
+                in a sequential manner. According DOE dS is set to 2 for IG_RS, IG_GR.
+        :param tP: τP is a parameter to be adjusted and is used to calculated the constant temperature T. According to
+                DOE tP is set to 0.5 for IG_RS, IG_GR.
+        :param time_limit: time limit
+        :param random_seed: random seed for deconstruction and construction
+        :param show_result: show result
+        :param save_result: save result
+        :return: best solution and its forward scheduling result
+        """
+        random.seed(random_seed)
+        r = random.uniform(0, 1)
+        random.seed(None)
+        T = sum([sum(self.p_kj[k]) for k in range(self.n_stages)]) / (10 * self.n_jobs * self.n_stages) * tP
+        if variant in ['IG_RS']:
+            pi_0, _ = self.NEH_heuristic(show_result=False, save_result=False)
+        elif variant in ['IG_GR']:
+            pi_0, _ = self.GRASP_NEH_heuristic(show_result=False, save_result=False, random_seed=random_seed)
+        else:
+            raise NameError('IG_algorithm variant parameter Error')
+        pi_0_goal = self.forward_scheduling_approach(pi_0)[self.goal]
+        pi_best = pi_0.copy()
+        pi_best_goal = self.forward_scheduling_approach(pi_best)[self.goal]
+        start_time = time.time()
+        while time.time() - start_time < time_limit:
+            pi_1, pi_R = self.destruction(pi_0.copy(), d_S)
+            pi_2 = self.construction(pi_1.copy(), pi_R)
+            pi_3 = self.first_improvement_insertion_local_search(pi_2.copy())
+            pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
+            if pi_3_goal < pi_0_goal:
+                pi_0 = pi_3.copy()
+                pi_0_goal = self.forward_scheduling_approach(pi_0)[self.goal]
+                if pi_3_goal < pi_best_goal:
+                    pi_best = pi_3.copy()
+                    pi_best_goal = self.forward_scheduling_approach(pi_best)[self.goal]
+            elif r < math.exp(-(pi_3_goal - pi_0_goal) / T):
+                pi_0 = pi_3.copy()
+        best_solution_result = self.forward_scheduling_approach(pi_best)
+        self.draw_fs_result_gant_chart(pi_best, method=variant, show_chart=show_result, save_result=save_result)
+        return pi_best, best_solution_result
+
 
 if __name__ == '__main__':
-    hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_seed=1)]
+    hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_seed=1), HFSPInstance(
+        n_jobs=10, n_stages=4, random_seed=1)]
     for g in ['TFT', 'C_max']:
         for hfsp_instance in hfsp_instances:
             ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance, goal=g)
             neh_solution_result = ma_solver.NEH_heuristic(show_result=True, save_result=True)
-            grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=True, save_result=True)
+            grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=True, save_result=True, random_seed=1)
+            for ig in ['IG_RS', 'IG_GR']:
+                ig_rs__solution_result = ma_solver.IG_algorithm(variant=ig, random_seed=1, show_result=False,
+                                                                save_result=True)
