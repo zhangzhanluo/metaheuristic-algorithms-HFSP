@@ -32,6 +32,7 @@ class MetaheuristicAlgorithmSolver:
         # The threshold value α ∈ [0, 1] limits the size of RCL and regulates balance between
         # greedy and randomized procedures.
         self.grasp_alpha = 0.1
+        self.time_limit = 30 * self.n_jobs * self.n_stages / 1000
 
     def forward_scheduling_approach(self, pi):
         """
@@ -306,7 +307,68 @@ class MetaheuristicAlgorithmSolver:
                     improvement_flag = True
         return pi
 
-    def IG_algorithm(self, variant, d_S=2, tP=0.5, time_limit=10, random_seed=None, show_result=True,
+    def r_local_search(self, algorithm, pi, pi_best):
+        """
+        Referenced Insertion Scheme (RIS) and Referenced Swap Scheme (RSS) algorithms. Give a better pi by local search.
+
+        :param algorithm: RIS or RSS
+        :param pi: current solution
+        :param pi_best: best known solution
+        :return: maybe a better solution
+        """
+        assert algorithm in ['RIS', 'RSS']
+        pi_R = pi_best.copy()
+        i = 0
+        pos = 0
+        n = len(pi)
+        pi_goal = self.forward_scheduling_approach(pi)[self.goal]
+        while i < n:
+            k = 0
+            while pi[k] != pi_R[pos]:
+                k = k + 1
+            pos += 1
+            if pos == n:
+                pos = 0
+            all_fitness = []
+            all_new_pi = []
+            pi_k_index = pi.index(pi[k])
+            if algorithm == 'RIS':
+                pi_remove_k = pi.copy()
+                pi_remove_k.remove(pi[k])
+                for j in range(n):
+                    if j != pi_k_index:
+                        new_pi = pi_remove_k.copy()
+                        new_pi.insert(j, pi[k])
+                        all_new_pi.append(new_pi)
+                        all_fitness.append(self.forward_scheduling_approach(new_pi)[self.goal])
+            else:
+                for j in range(n):
+                    if j != pi_k_index:
+                        new_pi = pi.copy()
+                        temp = new_pi[pi_k_index]
+                        new_pi[pi_k_index] = new_pi[j]
+                        new_pi[j] = temp
+                        all_new_pi.append(new_pi)
+                        all_fitness.append(self.forward_scheduling_approach(new_pi)[self.goal])
+            best_new_pi = all_new_pi[all_fitness.index(min(all_fitness))]
+            if min(all_fitness) < pi_goal:
+                pi = best_new_pi.copy()
+                pi_goal = self.forward_scheduling_approach(pi)[self.goal]
+                i = 1
+            else:
+                i += 1
+        return pi
+
+    @staticmethod
+    def remove_block(pi, b, random_seed=None):
+        random.seed(random_seed)
+        start_point = random.randint(1, len(pi) - 2)  # make sure that the block will not be the whole solution
+        pi_b = pi[start_point: start_point + b]
+        pi_p = pi[:start_point] + pi[start_point + b:]
+        random.seed(None)
+        return pi_p, pi_b
+
+    def IG_algorithm(self, variant, d_S=2, tP=0.5, jP=0.4, random_seed=None, show_result=True,
                      save_result=False):
         """
         Iterated greedy algorithm proposed by Ruiz and Stützle (2007)
@@ -315,8 +377,8 @@ class MetaheuristicAlgorithmSolver:
         :param d_S: dS jobs are randomly removed from current solution π and are re-inserted into the partial solution
                 in a sequential manner. According DOE dS is set to 2 for IG_RS, IG_GR.
         :param tP: τP is a parameter to be adjusted and is used to calculated the constant temperature T. According to
-                DOE tP is set to 0.5 for IG_RS, IG_GR.
-        :param time_limit: time limit
+                DOE tP is set to 0.5 for IG_RS, IG_GR, IGT, IGT_ALL.
+        :param jP: jump probability. According to DOE tP is set to 0.4 for IG_RS, IG_GR, IGT, IGT_ALL.
         :param random_seed: random seed for deconstruction and construction
         :param show_result: show result
         :param save_result: save result
@@ -328,7 +390,7 @@ class MetaheuristicAlgorithmSolver:
         T = sum([sum(self.p_kj[k]) for k in range(self.n_stages)]) / (10 * self.n_jobs * self.n_stages) * tP
         if variant in ['IG_RS']:
             pi_0, _ = self.NEH_heuristic(show_result=False, save_result=False)
-        elif variant in ['IG_GR']:
+        elif variant in ['IG_GR', 'IGT', 'IG_ALL']:
             pi_0, _ = self.GRASP_NEH_heuristic(show_result=False, save_result=False, random_seed=random_seed)
         else:
             raise NameError('IG_algorithm variant parameter Error')
@@ -336,11 +398,20 @@ class MetaheuristicAlgorithmSolver:
         pi_best = pi_0.copy()
         pi_best_goal = self.forward_scheduling_approach(pi_best)[self.goal]
         start_time = time.time()
-        while time.time() - start_time < time_limit:
+        while time.time() - start_time < self.time_limit:
+            print('IG Iteration')
             pi_1, pi_R = self.destruction(pi_0.copy(), d_S)
+            if variant == 'IG_ALL':
+                pi_1 = self.first_improvement_insertion_local_search(pi_1)
             pi_2 = self.construction(pi_1.copy(), pi_R)
-            pi_3 = self.first_improvement_insertion_local_search(pi_2.copy())
-            pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
+            if variant in ['IG_RS', 'IG_GR']:
+                pi_3 = self.first_improvement_insertion_local_search(pi_2.copy())
+                pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
+            elif variant in ['IGT', 'IG_ALL']:
+                pi_3 = self.r_local_search(algorithm='RIS' if r < jP else 'RSS', pi=pi_2.copy(), pi_best=pi_best)
+                pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
+            else:
+                raise NameError('IG algorithm variant parameter error!')
             if pi_3_goal < pi_0_goal:
                 pi_0 = pi_3.copy()
                 pi_0_goal = self.forward_scheduling_approach(pi_0)[self.goal]
@@ -353,6 +424,61 @@ class MetaheuristicAlgorithmSolver:
         self.draw_fs_result_gant_chart(pi_best, method=variant, show_chart=show_result, save_result=save_result)
         return pi_best, best_solution_result
 
+    def VBIH(self, b_max=8, tP=0.5, jP=0.4, random_seed=None, show_result=True, save_result=False):
+        """
+        Variable block insertion heuristic proposed by (Tasgetiren et al., 2016a, Tasgetiren et al., 2016b,
+        Tasgetiren Q. Pan et al., 2017). Unlike the standard block moves, the block size b changes in VBIH,
+        allowing for several block moves with different block sizes.
+
+        :param b_max: maxsize for block
+        :param tP: τP is a parameter to be adjusted and is used to calculated the constant temperature T. According to
+                DOE tP is set to 0.5 for VBIH.
+        :param jP: jump probability. According to DOE tP is set to 0.4 for VBIH.
+        :param random_seed: random seed
+        :param show_result: show result
+        :param save_result: save result
+        :return: best solution and its forward scheduling result
+        """
+        random.seed(random_seed)
+        r = random.uniform(0, 1)
+        random.seed(None)
+        T = sum([sum(self.p_kj[k]) for k in range(self.n_stages)]) / (10 * self.n_jobs * self.n_stages) * tP
+        pi_0, _ = self.GRASP_NEH_heuristic(show_result=False, save_result=False, random_seed=random_seed)
+        pi_0_goal = self.forward_scheduling_approach(pi_0)[self.goal]
+        pi_best = pi_0.copy()
+        pi_best_goal = self.forward_scheduling_approach(pi_best)[self.goal]
+        b_min = 2
+        start_time = time.time()
+        while time.time() - start_time < self.time_limit:
+            print('VBIH Iteration')
+            assert b_min < b_max  # there is no do in Python
+            b = b_min
+            while b <= b_max:
+                pi_1, pi_b = self.remove_block(pi_0.copy(), b, random_seed=random_seed)
+                pi_2 = self.first_improvement_insertion_local_search(pi_1)
+                all_fitness = []
+                all_new_pi = []
+                for j in range(len(pi_2) + 1):
+                    new_pi = pi_2[:j] + pi_b + pi_2[j:]
+                    all_new_pi.append(new_pi)
+                    all_fitness.append(self.forward_scheduling_approach(new_pi)[self.goal])
+                pi_3 = all_new_pi[all_fitness.index(min(all_fitness))]
+                pi_4 = self.r_local_search(algorithm='RIS' if r < jP else 'RSS', pi=pi_3.copy(), pi_best=pi_best)
+                pi_4_goal = self.forward_scheduling_approach(pi_4)[self.goal]
+                if pi_4_goal < pi_0_goal:
+                    pi_0 = pi_4.copy()
+                    pi_0_goal = self.forward_scheduling_approach(pi_0)[self.goal]
+                    if pi_4_goal < pi_best_goal:
+                        pi_best = pi_4.copy()
+                        pi_best_goal = self.forward_scheduling_approach(pi_best)[self.goal]
+                else:
+                    b += 1
+                    if r < math.exp(-(pi_4_goal - pi_0_goal) / T):
+                        pi_0 = pi_4.copy()
+        best_solution_result = self.forward_scheduling_approach(pi_best)
+        self.draw_fs_result_gant_chart(pi_best, method='VBIH', show_chart=show_result, save_result=save_result)
+        return pi_best, best_solution_result
+
 
 if __name__ == '__main__':
     hfsp_instances = [HFSPInstance(default=True), HFSPInstance(n_jobs=6, n_stages=3, random_seed=1), HFSPInstance(
@@ -360,8 +486,9 @@ if __name__ == '__main__':
     for g in ['TFT', 'C_max']:
         for hfsp_instance in hfsp_instances:
             ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance, goal=g)
-            neh_solution_result = ma_solver.NEH_heuristic(show_result=True, save_result=True)
-            grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=True, save_result=True, random_seed=1)
-            for ig in ['IG_RS', 'IG_GR']:
-                ig_rs__solution_result = ma_solver.IG_algorithm(variant=ig, random_seed=1, show_result=False,
-                                                                save_result=True)
+            neh_solution_result = ma_solver.NEH_heuristic(show_result=False, save_result=True)
+            grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=False, save_result=True, random_seed=1)
+            for ig in ['IGT', 'IG_ALL']:
+                ig_rs_solution_result = ma_solver.IG_algorithm(variant=ig, random_seed=1, show_result=False,
+                                                               save_result=True)
+            vbih_solution_result = ma_solver.VBIH(show_result=False, random_seed=1, save_result=True)
