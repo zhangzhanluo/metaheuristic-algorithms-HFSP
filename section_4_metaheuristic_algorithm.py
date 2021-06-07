@@ -88,7 +88,7 @@ class MetaheuristicAlgorithmSolver:
             if len(all_working_machine_status) == 0:  # 当所有的机器都空闲后，系统所有的任务都完成，结束
                 break
             system_clock = min(all_working_machine_status)  # 将系统时钟调整到下一个任务结束的时刻
-        all_c_j = [s_kj[-1][j] + self.p_kj[-1][j] for j in range(len(s_kj[0]))]
+        all_c_j = [s_kj[-1][j] + self.p_kj[-1][pi[j] - 1] for j in range(len(s_kj[0]))]
         return {'x_jki': x_jki, 's_kj': s_kj, 'TFT': round(sum(all_c_j), 1), 'C_max': round(max(all_c_j), 1)}
 
     def draw_fs_result_gant_chart(self, pi, method=None, show_chart=True, save_result=None):
@@ -390,7 +390,7 @@ class MetaheuristicAlgorithmSolver:
         T = sum([sum(self.p_kj[k]) for k in range(self.n_stages)]) / (10 * self.n_jobs * self.n_stages) * tP
         if variant in ['IG_RS']:
             pi_0, _ = self.NEH_heuristic(show_result=False, save_result=False)
-        elif variant in ['IG_GR', 'IGT', 'IG_ALL']:
+        elif variant in ['IG_GR', 'IGT', 'IGT_ALL']:
             pi_0, _ = self.GRASP_NEH_heuristic(show_result=False, save_result=False, random_seed=random_seed)
         else:
             raise NameError('IG_algorithm variant parameter Error')
@@ -401,13 +401,13 @@ class MetaheuristicAlgorithmSolver:
         while time.time() - start_time < self.time_limit:
             print('IG Iteration')
             pi_1, pi_R = self.destruction(pi_0.copy(), d_S)
-            if variant == 'IG_ALL':
+            if variant == 'IGT_ALL':
                 pi_1 = self.first_improvement_insertion_local_search(pi_1)
             pi_2 = self.construction(pi_1.copy(), pi_R)
             if variant in ['IG_RS', 'IG_GR']:
                 pi_3 = self.first_improvement_insertion_local_search(pi_2.copy())
                 pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
-            elif variant in ['IGT', 'IG_ALL']:
+            elif variant in ['IGT', 'IGT_ALL']:
                 pi_3 = self.r_local_search(algorithm='RIS' if r < jP else 'RSS', pi=pi_2.copy(), pi_best=pi_best)
                 pi_3_goal = self.forward_scheduling_approach(pi_3)[self.goal]
             else:
@@ -488,7 +488,7 @@ if __name__ == '__main__':
             ma_solver = MetaheuristicAlgorithmSolver(hfsp_instance, goal=g)
             neh_solution_result = ma_solver.NEH_heuristic(show_result=False, save_result=True)
             grasp_neh_solution_result = ma_solver.GRASP_NEH_heuristic(show_result=False, save_result=True, random_seed=1)
-            for ig in ['IGT', 'IG_ALL']:
+            for ig in ['IG_RS', 'IG_GR', 'IGT', 'IGT_ALL']:
                 ig_rs_solution_result = ma_solver.IG_algorithm(variant=ig, random_seed=1, show_result=False,
                                                                save_result=True)
             vbih_solution_result = ma_solver.VBIH(show_result=False, random_seed=1, save_result=True)
