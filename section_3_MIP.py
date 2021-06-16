@@ -96,9 +96,10 @@ def mip(instance, goal, time_limit=600, save_pic=True):
         model_building_time = time.time() - start_time
 
         # solve the model
+        start_time = time.time()
         m.setParam('TimeLimit', time_limit)
         m.optimize()
-        model_solving_time = time.time() - model_building_time
+        model_solving_time = time.time() - start_time
 
         # print results
         print('Obj:', m.objVal)
