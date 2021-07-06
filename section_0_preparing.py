@@ -19,7 +19,6 @@ class HFSPInstance:
         :param machine_layout: machine layout type: a, b, c, d, e, see Section 6 for more infos
         :param default: the example given in Section 4
         :param random_seed: None means totally random
-        :return: Processing time, the number of machines in each stage, instance name
         """
         random.seed(random_seed)
         self.n_jobs = 6 if default else n_jobs

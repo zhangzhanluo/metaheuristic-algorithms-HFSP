@@ -54,7 +54,12 @@ class MetaheuristicAlgorithmSolver:
         machines_status = [[0.0 for _ in range(self.I_k[i])] for i in range(self.n_stages)]  # 记录机器正在处理的任务完成时间或者空闲
         x_jki = [[[0 for _ in range(self.I_k[k])] for k in range(self.n_stages)] for _ in range(len(pi))]
         s_kj = [[-1 for _ in range(len(pi))] for _ in range(self.n_stages)]
+        print('Warning! 方案评估函数forward_scheduling_approach有误，请修改后使用！')
         while True:
+
+            # 下面这段程序是有问题的！因为当buffer上有多个任务时，其优先级不是谁先完成，而是谁在初始方案中顺序比较靠前！！
+            # 暂时没有对着一部分进行修改，其他人如果使用本程序，本函数务必重写！！
+
             for j in range(len(pi)):
                 # 对所有任务进行遍历，判断是否可以结束以及是否可以开始
                 if jobs_finishing_time[j] <= system_clock:  # 任务需要转移到下一阶段
